@@ -232,7 +232,7 @@ const S={
   round:store.get('round',null),   // {picks:[[ids],[ids]], deck:[ids], fitAll, votes:{id:{name:kind}}, stage}
   movies:[],unmatched:[],
   screen:'setup',p:0,queue:[],history:[],busy:false,
-  msg:'',bad:false
+  msg:'',bad:false,notice:''
 };
 while(S.players.length<2) S.players.push('');
 if(!SIZES.includes(S.size)) S.size=12;
@@ -249,11 +249,21 @@ async function tmdb(path,params){
   if(S.token.startsWith('eyJ')) headers.Authorization='Bearer '+S.token;
   else url.searchParams.set('api_key',S.token);
   for(const [k,v] of Object.entries(params||{})) url.searchParams.set(k,v);
-  const r=await fetch(url,{headers});
-  if(r.status===401) throw new Error('auth');
-  if(!r.ok) throw new Error('http '+r.status);
-  return r.json();
+  // Retry brief network drops and TMDB rate limits (429) a few times before giving up.
+  for(let attempt=0;;attempt++){
+    let r;
+    try{r=await fetch(url,{headers})}
+    catch(e){if(attempt<3){await sleep(600*(attempt+1));continue}throw new Error('network')}
+    if(r.status===401) throw new Error('auth');
+    if((r.status===429||r.status>=500)&&attempt<3){
+      const wait=(parseFloat(r.headers.get('Retry-After'))||attempt+1)*1000;
+      await sleep(Math.min(wait,5000));continue;
+    }
+    if(!r.ok) throw new Error('http '+r.status);
+    return r.json();
+  }
 }
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 // Step 1, for every film: one search call gives the id, poster, plot and genres.
 async function resolve(item){
   const base={query:item.name,include_adult:'false',language:'en-US'};
@@ -316,9 +326,7 @@ async function runLookups(items,title,note,work,save){
     if(done%20===0) save();
   });
   save();
-  if(authFail) return 'TMDB rejected that key. Copy the API Read Access Token again from your TMDB settings.';
-  if(failed) return plural(failed,'lookup')+' failed because of a connection problem. Try again.';
-  return '';
+  return {authFail,failed};
 }
 
 /* ---------- file import ---------- */
@@ -396,15 +404,17 @@ function viewSetup(){
 }
 async function onStart(){
   S.players=cleanNames();store.set('players',S.players);
-  S.msg='';S.bad=false;
+  S.msg='';S.bad=false;S.notice='';
   const pending=pendingItems();
   if(pending.length){
-    const err=await runLookups(pending,'Matching your watchlist','Each film is looked up once, then remembered on this device.',
+    const res=await runLookups(pending,'Matching your watchlist','Each film is looked up once, then remembered on this device.',
       async item=>{S.cache[keyOf(item)]=await resolve(item)},()=>store.set('cache2',S.cache));
     rebuildMovies();
-    if(err){S.msg=err;S.bad=true;viewSetup();return}
+    if(res.authFail){S.msg='TMDB rejected that key. Copy the API Read Access Token again from your TMDB settings.';S.bad=true;viewSetup();return}
+    // Films whose lookup errored are left out of this round and retried automatically next time.
+    if(res.failed) S.notice='Left out '+plural(res.failed,'film')+' that couldn’t be looked up right now. They’ll be retried next round.';
   }
-  if(!S.movies.length){S.msg='None of the films could be matched on TMDB.';S.bad=true;viewSetup();return}
+  if(!S.movies.length){S.msg='None of the films could be matched on TMDB. Check your connection and try again.';S.bad=true;viewSetup();return}
   S.round={picks:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();
   viewPick(0);
 }
@@ -432,6 +442,7 @@ function viewPick(i){
     h('div',{class:'pickhead'},
       h('p',{class:'label'},i===0?'Round starts · pass the phone to':'Now pass the phone to'),
       h('h2',{class:'bigname'},name)),
+    i===0&&S.notice?h('p',{class:'status',role:'status'},S.notice):null,
     h('p',{class:'sub'},'What are you in the mood for? Pick as many as you like, or none if anything goes. The number is how many films on your watchlist have that genre.'),
     chips,
     h('div',{class:'actions'},done,h('button',{class:'btn ghost',type:'button',onclick:viewSetup},'Back to setup'))),'pick');
