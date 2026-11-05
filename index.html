@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#120f17">
+<title>Cineswipe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+/* Layout: one narrow column, phone first. Screens: setup, genre pick, handoff, swipe, results. */
+:root{
+  --ink:#120f17; --ink-2:#1b1723; --ink-3:#2b2536; --line:#383044;
+  --paper:#f2ece1; --muted:#a49cb3; --bulb:#f4b942; --on-bulb:#1c1405;
+  --yes:#5ed39a; --no:#f0705f; --seen:#93a8ff;
+  --display:'Anton','Impact','Arial Narrow',sans-serif;
+  --body:'DM Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--ink);color:var(--paper);font:400 16px/1.45 var(--body);
+  -webkit-tap-highlight-color:transparent;
+  padding-left:max(16px,env(safe-area-inset-left,0px));
+  padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+#app{max-width:480px;margin:0 auto}
+h1,h2,h3,p{margin:0}
+button,input{font:inherit;color:inherit}
+a{color:var(--bulb)}
+:focus-visible{outline:2px solid var(--bulb);outline-offset:2px}
+.muted{color:var(--muted)}
+
+.screen{display:flex;flex-direction:column;gap:20px;padding-block:20px 32px;min-width:0}
+.screen.center{min-height:100dvh;justify-content:center;text-align:center;align-items:center;padding-block:24px}
+.screen.swipe{height:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px));padding-block:12px;gap:0}
+
+.brand{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.center .brand{align-items:center}
+.brand h1{font:400 clamp(44px,15vw,64px)/1 var(--display);letter-spacing:.04em;text-transform:uppercase}
+.marquee{width:100%;height:10px;background:radial-gradient(circle,var(--bulb) 0 3px,transparent 3.6px) 0 50%/16px 10px repeat-x;filter:drop-shadow(0 0 4px rgba(244,185,66,.55))}
+.sub{color:var(--muted);font-size:15px}
+
+.label{font-size:12px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.section{display:flex;flex-direction:column;gap:10px}
+.help{font-size:14px;color:var(--muted)}
+.status{padding:10px 14px;border-radius:10px;background:var(--ink-2);border:1px solid var(--line);font-size:14px}
+.status.bad{border-color:var(--no);color:#ffd4cd}
+
+.names{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+input[type=text],input[type=password]{
+  width:100%;min-width:0;background:var(--ink-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;
+}
+input::placeholder{color:#6f677d}
+
+.btn{appearance:none;border:1px solid var(--line);background:transparent;border-radius:12px;padding:14px 18px;font-weight:700;cursor:pointer;text-align:center;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--bulb);color:var(--on-bulb);border-color:var(--bulb)}
+.btn.primary:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{border-color:transparent;color:var(--muted);font-weight:500}
+.btn.small{padding:8px 12px;font-size:14px;border-radius:10px}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.filebtn input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.filebtn{position:relative}
+details{font-size:14px;color:var(--muted)}
+summary{cursor:pointer}
+details ul{margin:8px 0 0;padding-left:20px}
+.actions{display:flex;flex-direction:column;gap:10px;width:100%}
+
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.seg button{appearance:none;border:0;background:transparent;padding:12px 0;font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed=true]{background:var(--bulb);color:var(--on-bulb)}
+
+.gchips{display:flex;flex-wrap:wrap;gap:8px}
+.gchip{appearance:none;border:1px solid var(--line);background:var(--ink-2);border-radius:99px;padding:10px 14px;font-weight:500;cursor:pointer}
+.gchip small{color:var(--muted);font-variant-numeric:tabular-nums;margin-left:6px}
+.gchip[aria-pressed=true]{background:var(--bulb);border-color:var(--bulb);color:var(--on-bulb)}
+.gchip[aria-pressed=true] small{color:var(--on-bulb);opacity:.7}
+
+.bigname{font:400 clamp(48px,16vw,76px)/1 var(--display);text-transform:uppercase;letter-spacing:.03em;text-wrap:balance;overflow-wrap:anywhere}
+.pickhead{display:flex;flex-direction:column;gap:6px}
+.pickhead .bigname{font-size:clamp(40px,13vw,60px)}
+.bar{width:100%;height:8px;border-radius:99px;background:var(--ink-3);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--bulb);transition:width .15s}
+.count{font-variant-numeric:tabular-nums}
+
+/* swipe */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px}
+.who{display:flex;flex-direction:column;line-height:1.1;min-width:0}
+.who b{font:400 24px/1.1 var(--display);text-transform:uppercase;letter-spacing:.04em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who span{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stage{position:relative;flex:1;min-height:0;margin:8px 0 12px}
+.card{
+  position:absolute;inset:0;display:flex;flex-direction:column;background:var(--ink-2);border:1px solid var(--line);
+  border-radius:18px;overflow:hidden;touch-action:pan-y;cursor:grab;transition:transform .25s ease,opacity .25s ease;
+  will-change:transform;user-select:none;-webkit-user-select:none;
+}
+.card.back{transform:scale(.94) translateY(12px);opacity:.55;pointer-events:none}
+.poster{position:relative;flex:1 1 auto;min-height:110px;background:var(--ink-3)}
+.poster img{width:100%;height:100%;object-fit:cover;object-position:center 20%;display:block;pointer-events:none}
+.noposter{height:100%;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;font:400 30px/1.1 var(--display);text-transform:uppercase;color:var(--muted)}
+.info{display:flex;flex-direction:column;gap:5px;padding:14px 16px 16px;background:var(--ink-2);flex:none;max-height:66%;overflow:auto}
+.ctitle{font:400 26px/1.1 var(--display);letter-spacing:.02em;text-transform:uppercase;text-wrap:balance}
+.meta{font-size:14px;color:var(--paper);font-variant-numeric:tabular-nums}
+.credit{font-size:14px;color:#d9d2c6}
+.credit span{color:var(--muted)}
+.genres{font-size:13px;color:var(--muted)}
+.over{font-size:14px;color:#d9d2c6}
+.over.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.trailer{align-self:flex-start;font-size:14px;font-weight:700;margin-top:2px}
+.stamp{position:absolute;top:20px;padding:2px 12px;border:3px solid;border-radius:8px;font:400 34px/1.2 var(--display);letter-spacing:.06em;opacity:0;background:rgba(18,15,23,.55)}
+.stamp.yes{left:16px;color:var(--yes);transform:rotate(-12deg)}
+.stamp.no{right:16px;color:var(--no);transform:rotate(12deg)}
+.fitbadge{position:absolute;right:12px;bottom:12px;font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;background:rgba(18,15,23,.8);color:var(--bulb);border:1px solid var(--bulb)}
+.votes{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.vote{appearance:none;border:2px solid;border-radius:14px;background:transparent;height:58px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+.vote svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.vote.no{color:var(--no);border-color:var(--no)}
+.vote.seen{color:var(--seen);border-color:var(--seen)}
+.vote.yes{color:#0d2a1d;background:var(--yes);border-color:var(--yes)}
+.vote:active{transform:scale(.97)}
+
+/* results */
+.list{display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;padding:12px 0;border-top:1px solid var(--line)}
+.row img,.row .ph{width:72px;aspect-ratio:2/3;object-fit:cover;border-radius:6px;background:var(--ink-3);display:block}
+.row h3{font:400 20px/1.15 var(--display);letter-spacing:.02em;text-transform:uppercase;overflow-wrap:anywhere}
+.row .meta,.row .credit{color:var(--muted);font-size:13px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chip{font-size:12px;padding:2px 9px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.chip.yes{color:var(--yes);border-color:var(--yes)}
+.chip.no{color:var(--no);border-color:var(--no)}
+.chip.seen{color:var(--seen);border-color:var(--seen)}
+.empty{padding:14px 0;color:var(--muted);font-size:15px}
+.hh{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.hh h2{font:400 28px/1.1 var(--display);letter-spacing:.03em;text-transform:uppercase}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important;animation-duration:.01ms!important}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+/*PURE*/
+const GENRES={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Sci-Fi',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'};
+const COUNTRY_SHORT={'United States of America':'USA','United Kingdom':'UK','South Korea':'S. Korea','Korea':'S. Korea','Russian Federation':'Russia','Hong Kong SAR China':'Hong Kong','Czech Republic':'Czechia'};
+function keyOf(i){return String(i.name).toLowerCase()+'|'+(i.year||0)}
+function parseCSV(text){
+  const rows=[];let row=[],cell='',q=false;
+  text=text.replace(/^﻿/,'');
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){cell+='"';i++} else q=false }
+      else cell+=c;
+    } else if(c==='"') q=true;
+    else if(c===','){row.push(cell);cell=''}
+    else if(c==='\n'||c==='\r'){
+      if(c==='\r'&&text[i+1]==='\n') i++;
+      row.push(cell);rows.push(row);row=[];cell='';
+    } else cell+=c;
+  }
+  if(cell!==''||row.length){row.push(cell);rows.push(row)}
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function listFromCSV(text){
+  const rows=parseCSV(text);
+  if(!rows.length) throw new Error('That file is empty.');
+  const head=rows.shift().map(x=>x.trim().toLowerCase());
+  const ni=head.indexOf('name'),yi=head.indexOf('year');
+  if(ni<0) throw new Error('No Name column found. Use watchlist.csv from the Letterboxd export.');
+  const seen=new Set();
+  return rows.map(r=>({name:(r[ni]||'').trim(),year:parseInt(r[yi],10)||0}))
+    .filter(x=>x.name).filter(x=>{const k=keyOf(x);if(seen.has(k))return false;seen.add(k);return true});
+}
+function shuffle(a,rand){rand=rand||Math.random;a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+// How many players' genre picks a film fits. An empty pick list means "any genre".
+function fitScore(m,picks){return picks.filter(p=>!p.length||p.some(g=>(m.g||[]).includes(g))).length}
+// Best fit: films that suit everyone first, then films that suit fewer people, random within each group.
+function buildDeck(movies,picks,n,rand){
+  const groups={};
+  for(const m of movies){const s=fitScore(m,picks);(groups[s]=groups[s]||[]).push(m)}
+  let deck=[];
+  for(let s=picks.length;s>=0&&deck.length<n;s--) if(groups[s]) deck=deck.concat(shuffle(groups[s],rand));
+  deck=deck.slice(0,n);
+  return {deck,fitAll:deck.filter(m=>fitScore(m,picks)===picks.length).length};
+}
+function genreCounts(movies){
+  const c={};for(const m of movies) for(const g of m.g||[]) if(GENRES[g]) c[g]=(c[g]||0)+1;
+  return Object.keys(c).map(Number).sort((a,b)=>c[b]-c[a]).map(g=>({id:g,name:GENRES[g],count:c[g]}));
+}
+function fmtRuntime(r){return r>=60?Math.floor(r/60)+'h '+(r%60)+'m':r+'m'}
+function plural(n,w){return n+' '+w+(n===1?'':'s')}
+function shortCountry(n){return COUNTRY_SHORT[n]||n}
+/*END PURE*/
+
+const $=(s,el=document)=>el.querySelector(s);
+function h(tag,attrs,...kids){
+  const e=document.createElement(tag);
+  for(const [k,v] of Object.entries(attrs||{})){
+    if(k==='class') e.className=v;
+    else if(k.startsWith('on')) e.addEventListener(k.slice(2),v);
+    else if(v===true) e.setAttribute(k,'');
+    else if(v!==false&&v!=null) e.setAttribute(k,v);
+  }
+  for(const kid of kids.flat()){
+    if(kid==null||kid===false) continue;
+    e.append(kid.nodeType?kid:document.createTextNode(kid));
+  }
+  return e;
+}
+const store={
+  get(k,d){try{const v=localStorage.getItem('cs.'+k);return v?JSON.parse(v):d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem('cs.'+k,JSON.stringify(v))}catch(e){}},
+  del(k){try{localStorage.removeItem('cs.'+k)}catch(e){}}
+};
+store.del('cache');store.del('votes'); // data from the first version
+const IMG='https://image.tmdb.org/t/p/';
+const SIZES=[8,12,20];
+
+const S={
+  token:store.get('token',''),
+  players:store.get('players',['','']).slice(0,2),
+  size:store.get('size',12),
+  list:store.get('list',[]),       // [{name, year}] from the Letterboxd watchlist
+  cache:store.get('cache2',{}),    // "name|year" -> {id,title,year,poster,overview,g:[genre ids]}, or null when TMDB has no match
+  details:store.get('details',{}), // tmdbId -> {runtime, genres, directors, cast, countries, trailer}
+  round:store.get('round',null),   // {picks:[[ids],[ids]], deck:[ids], fitAll, votes:{id:{name:kind}}, stage}
+  movies:[],unmatched:[],
+  screen:'setup',p:0,queue:[],history:[],busy:false,
+  msg:'',bad:false
+};
+while(S.players.length<2) S.players.push('');
+if(!SIZES.includes(S.size)) S.size=12;
+
+const saveRound=()=>store.set('round',S.round);
+const byId=id=>S.movies.find(m=>m.id===id);
+function render(node,screen){S.screen=screen;$('#app').replaceChildren(node);window.scrollTo(0,0)}
+const brand=(sub)=>h('header',{class:'brand'},h('h1',{},'Cineswipe'),h('div',{class:'marquee'}),sub?h('p',{class:'sub'},sub):null);
+
+/* ---------- TMDB ---------- */
+async function tmdb(path,params){
+  const url=new URL('https://api.themoviedb.org/3'+path);
+  const headers={accept:'application/json'};
+  if(S.token.startsWith('eyJ')) headers.Authorization='Bearer '+S.token;
+  else url.searchParams.set('api_key',S.token);
+  for(const [k,v] of Object.entries(params||{})) url.searchParams.set(k,v);
+  const r=await fetch(url,{headers});
+  if(r.status===401) throw new Error('auth');
+  if(!r.ok) throw new Error('http '+r.status);
+  return r.json();
+}
+// Step 1, for every film: one search call gives the id, poster, plot and genres.
+async function resolve(item){
+  const base={query:item.name,include_adult:'false',language:'en-US'};
+  let results=(await tmdb('/search/movie',item.year?Object.assign({year:item.year},base):base)).results||[];
+  if(!results.length&&item.year){
+    const r=(await tmdb('/search/movie',base)).results||[];
+    results=r.filter(x=>Math.abs((parseInt((x.release_date||'').slice(0,4),10)||0)-item.year)<=1);
+  }
+  if(!results.length) return null;
+  const want=item.name.toLowerCase();
+  const hit=results.find(x=>[x.title,x.original_title].some(t=>t&&t.toLowerCase()===want))||results[0];
+  return {id:hit.id,title:hit.title||item.name,year:(hit.release_date||'').slice(0,4)||String(item.year||''),
+    poster:hit.poster_path||'',overview:hit.overview||'',g:hit.genre_ids||[]};
+}
+// Step 2, only for the films in this round: director, cast, country, runtime, trailer.
+async function fetchDetails(id){
+  const d=await tmdb('/movie/'+id,{language:'en-US',append_to_response:'videos,credits',include_video_language:'en,null'});
+  const vids=((d.videos&&d.videos.results)||[]).filter(v=>v.site==='YouTube');
+  const pick=vids.find(v=>v.type==='Trailer'&&v.official)||vids.find(v=>v.type==='Trailer')||vids.find(v=>v.type==='Teaser');
+  const crew=(d.credits&&d.credits.crew)||[],cast=(d.credits&&d.credits.cast)||[];
+  return {
+    runtime:d.runtime||0,
+    genres:(d.genres||[]).map(g=>GENRES[g.id]||g.name),
+    directors:[...new Set(crew.filter(c=>c.job==='Director').map(c=>c.name))].slice(0,2),
+    cast:cast.slice(0,3).map(c=>c.name),
+    countries:(d.production_countries||[]).map(c=>shortCountry(c.name)).slice(0,2),
+    trailer:pick?'https://www.youtube.com/watch?v='+pick.key:''
+  };
+}
+async function pool(items,n,fn){
+  let i=0;
+  await Promise.all(Array.from({length:Math.min(n,items.length)},async()=>{
+    while(i<items.length){const idx=i++;await fn(items[idx],idx)}
+  }));
+}
+function rebuildMovies(){
+  S.movies=[];S.unmatched=[];const ids=new Set();
+  for(const i of S.list){
+    const c=S.cache[keyOf(i)];
+    if(c){if(!ids.has(c.id)){ids.add(c.id);S.movies.push(c)}}
+    else if(c===null) S.unmatched.push(i);
+  }
+}
+const pendingItems=()=>S.list.filter(i=>!(keyOf(i) in S.cache));
+
+function progressScreen(title,total,note){
+  const fill=h('i'),count=h('p',{class:'count muted'},'0 / '+total);
+  render(h('main',{class:'screen center'},brand(),
+    h('h2',{class:'bigname',style:'font-size:34px'},title),
+    h('div',{class:'bar'},fill),count,note?h('p',{class:'help'},note):null),'loading');
+  return done=>{fill.style.width=(done/total*100)+'%';count.textContent=done+' / '+total};
+}
+async function runLookups(items,title,note,work,save){
+  const tick=progressScreen(title,items.length,note);
+  let done=0,failed=0,authFail=false;
+  await pool(items,5,async item=>{
+    if(authFail) return;
+    try{await work(item)}catch(e){if(e.message==='auth') authFail=true;else failed++}
+    tick(++done);
+    if(done%20===0) save();
+  });
+  save();
+  if(authFail) return 'TMDB rejected that key. Copy the API Read Access Token again from your TMDB settings.';
+  if(failed) return plural(failed,'lookup')+' failed because of a connection problem. Try again.';
+  return '';
+}
+
+/* ---------- file import ---------- */
+async function readFile(file){
+  if(/\.zip$/i.test(file.name)){
+    if(!window.JSZip) throw new Error('The zip reader did not load. Check your connection, or upload watchlist.csv directly.');
+    const z=await JSZip.loadAsync(file);
+    const entry=Object.values(z.files).find(f=>!f.dir&&/(^|\/)watchlist\.csv$/i.test(f.name));
+    if(!entry) throw new Error('There is no watchlist.csv inside that zip.');
+    return entry.async('string');
+  }
+  return file.text();
+}
+async function onFile(e){
+  const f=e.target.files[0];if(!f) return;
+  try{
+    S.list=listFromCSV(await readFile(f));
+    store.set('list',S.list);rebuildMovies();
+    S.msg=plural(S.list.length,'film')+' found in '+f.name+'.';S.bad=false;
+  }catch(err){S.msg=err.message;S.bad=true}
+  viewSetup();
+}
+
+/* ---------- setup ---------- */
+const cleanNames=()=>S.players.map(s=>s.trim());
+function namesOk(){const n=cleanNames();return n.every(Boolean)&&n[0].toLowerCase()!==n[1].toLowerCase()}
+
+function viewSetup(){
+  const names=h('div',{class:'names'},S.players.map((n,i)=>{
+    const inp=h('input',{id:'name'+i,type:'text',placeholder:'Player '+(i+1),maxlength:'16',autocomplete:'off','aria-label':'Player '+(i+1)+' name',
+      oninput:e=>{S.players[i]=e.target.value;store.set('players',S.players);refresh()}});
+    inp.value=n;return inp;
+  }));
+  const pending=pendingItems().length;
+  const stats=S.list.length
+    ?plural(S.list.length,'film')+' in your list · '+S.movies.length+' matched'+(pending?' · '+pending+' still to look up':'')
+    :'No watchlist loaded yet.';
+  const token=h('input',{id:'token',type:'password',placeholder:'Paste your TMDB API Read Access Token',autocomplete:'off','aria-label':'TMDB API key',
+    oninput:e=>{S.token=e.target.value.trim();store.set('token',S.token);refresh()}});
+  token.value=S.token;
+  const seg=h('div',{class:'seg',role:'group','aria-label':'Films per round'},SIZES.map(n=>
+    h('button',{type:'button','aria-pressed':String(S.size===n),onclick:()=>{S.size=n;store.set('size',n);viewSetup()}},String(n))));
+  const start=h('button',{class:'btn primary',type:'button',onclick:onStart},'Start a round');
+  const hint=h('p',{class:'help'});
+  const resumable=S.round&&S.round.stage!=='done'&&S.round.deck.length;
+
+  function refresh(){
+    let why='';
+    if(!namesOk()) why='Enter two different names.';
+    else if(!S.list.length) why='Upload your watchlist first.';
+    else if(pendingItems().length&&!S.token) why='Add your TMDB key so the films can be looked up.';
+    start.disabled=!!why;hint.textContent=why;
+  }
+
+  render(h('main',{class:'screen'},
+    brand('Pick tonight’s film from your watchlist. One phone, passed between you.'),
+    S.msg?h('p',{class:'status'+(S.bad?' bad':''),role:'status'},S.msg):null,
+    h('section',{class:'section'},h('p',{class:'label'},'Who is watching'),names),
+    h('section',{class:'section'},h('p',{class:'label'},'Films per round'),seg,
+      h('p',{class:'help'},'Each of you swipes the same '+S.size+' films, drawn at random every round.')),
+    h('section',{class:'section'},h('p',{class:'label'},'Watchlist'),
+      h('label',{class:'btn filebtn'},'Upload Letterboxd export',
+        h('input',{id:'file',type:'file',accept:'.zip,.csv,text/csv,application/zip',onchange:onFile})),
+      h('p',{class:'help'},stats),
+      S.unmatched.length?h('details',{},h('summary',{},plural(S.unmatched.length,'film')+" couldn't be matched"),
+        h('ul',{},S.unmatched.map(i=>h('li',{},i.name+(i.year?' ('+i.year+')':''))))):null,
+      h('p',{class:'help'},'Letterboxd website → Settings → Import & Export → Export your data. Upload the zip as it is, or just watchlist.csv.')),
+    h('section',{class:'section'},h('p',{class:'label'},'TMDB key'),token,
+      h('p',{class:'help'},'Free at themoviedb.org → Settings → API. It stays in this browser only.')),
+    h('div',{class:'actions'},
+      resumable?h('button',{class:'btn primary',type:'button',onclick:resumeRound},'Resume the current round'):null,
+      start,hint)
+  ),'setup');
+  refresh();
+}
+async function onStart(){
+  S.players=cleanNames();store.set('players',S.players);
+  S.msg='';S.bad=false;
+  const pending=pendingItems();
+  if(pending.length){
+    const err=await runLookups(pending,'Matching your watchlist','Each film is looked up once, then remembered on this device.',
+      async item=>{S.cache[keyOf(item)]=await resolve(item)},()=>store.set('cache2',S.cache));
+    rebuildMovies();
+    if(err){S.msg=err;S.bad=true;viewSetup();return}
+  }
+  if(!S.movies.length){S.msg='None of the films could be matched on TMDB.';S.bad=true;viewSetup();return}
+  S.round={picks:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();
+  viewPick(0);
+}
+
+/* ---------- genre picks ---------- */
+function viewPick(i){
+  const name=S.players[i];
+  const chosen=new Set(S.round.picks[i]||[]);
+  const counts=genreCounts(S.movies);
+  const done=h('button',{class:'btn primary',type:'button',onclick:()=>{
+    S.round.picks[i]=[...chosen];
+    if(i===0){S.round.stage='pick1';saveRound();viewPick(1)}
+    else makeDeck();
+  }});
+  const label=()=>{done.textContent=chosen.size?'Done · '+plural(chosen.size,'genre'):'Done · any genre is fine'};
+  const chips=h('div',{class:'gchips'},counts.map(g=>{
+    const b=h('button',{class:'gchip',type:'button','aria-pressed':String(chosen.has(g.id)),onclick:()=>{
+      chosen.has(g.id)?chosen.delete(g.id):chosen.add(g.id);
+      b.setAttribute('aria-pressed',String(chosen.has(g.id)));label();
+    }},g.name,h('small',{},String(g.count)));
+    return b;
+  }));
+  label();
+  render(h('main',{class:'screen'},
+    h('div',{class:'pickhead'},
+      h('p',{class:'label'},i===0?'Round starts · pass the phone to':'Now pass the phone to'),
+      h('h2',{class:'bigname'},name)),
+    h('p',{class:'sub'},'What are you in the mood for? Pick as many as you like, or none if anything goes. The number is how many films on your watchlist have that genre.'),
+    chips,
+    h('div',{class:'actions'},done,h('button',{class:'btn ghost',type:'button',onclick:viewSetup},'Back to setup'))),'pick');
+}
+async function makeDeck(){
+  const {deck,fitAll}=buildDeck(S.movies,S.round.picks,S.size);
+  S.round.deck=deck.map(m=>m.id);S.round.fitAll=fitAll;S.round.votes={};S.round.stage='swipe0';saveRound();
+  const missing=S.round.deck.filter(id=>!S.details[id]);
+  if(missing.length){
+    // A failed detail lookup only hides director/cast on that card, so carry on either way.
+    await runLookups(missing,'Shuffling the deck','',async id=>{S.details[id]=await fetchDetails(id)},()=>store.set('details',S.details));
+  }
+  S.p=0;startPlayer();
+}
+function resumeRound(){
+  const r=S.round;
+  if(r.stage==='pick0') return viewPick(0);
+  if(r.stage==='pick1') return viewPick(1);
+  S.p=r.stage==='swipe1'?1:0;startPlayer();
+}
+
+/* ---------- swiping ---------- */
+function startPlayer(){
+  const name=S.players[S.p];
+  S.queue=S.round.deck.filter(id=>!(S.round.votes[id]&&S.round.votes[id][name])).map(byId).filter(Boolean);
+  S.history=[];
+  if(!S.queue.length) return nextPlayer();
+  viewHandoff();
+}
+function nextPlayer(){
+  if(S.p===0){S.p=1;S.round.stage='swipe1';saveRound();startPlayer()}
+  else{S.round.stage='done';saveRound();viewResults()}
+}
+function viewHandoff(){
+  const n=S.players[S.p],r=S.round;
+  const fit=r.picks.every(p=>!p.length)?'Any genre, picked at random.'
+    :r.fitAll===r.deck.length?'All of them fit both your picks.'
+    :r.fitAll?r.fitAll+' fit both your picks. The rest fit one of you.'
+    :'No film fits both your picks, so this deck mixes each of yours.';
+  render(h('main',{class:'screen center'},brand(),
+    h('p',{class:'label'},S.p===0?'First up':'Your turn'),
+    h('h2',{class:'bigname'},n),
+    h('p',{class:'muted'},plural(S.queue.length,'film')+' to swipe. '+(S.p===0?fit:'')),
+    h('div',{class:'actions'},
+      h('button',{class:'btn primary',type:'button',onclick:viewSwipe},"I'm "+n),
+      h('button',{class:'btn ghost',type:'button',onclick:viewSetup},'Back to setup'))),'handoff');
+}
+
+const ICON={
+  no:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  seen:'<svg viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>',
+  yes:'<svg viewBox="0 0 24 24"><path d="M4.5 12.5l5 5 10-11"/></svg>'
+};
+function voteBtn(kind,label){
+  const b=h('button',{class:'vote '+kind,type:'button','aria-label':label,onclick:()=>act(kind)});
+  b.innerHTML=ICON[kind];b.append(label);return b;
+}
+function full(m){
+  const d=S.details[m.id]||{};
+  return Object.assign({},m,{
+    runtime:d.runtime||0,
+    genres:d.genres||(m.g||[]).map(g=>GENRES[g]).filter(Boolean),
+    directors:d.directors||[],cast:d.cast||[],countries:d.countries||[],
+    trailer:d.trailer||''
+  });
+}
+const metaLine=f=>[f.year,f.runtime?fmtRuntime(f.runtime):'',f.countries.join(' / ')].filter(Boolean).join(' · ');
+function cardEl(m,back){
+  const f=full(m);
+  const poster=f.poster
+    ?h('img',{src:IMG+'w500'+f.poster,alt:back?'':'Poster for '+f.title,draggable:'false'})
+    :h('div',{class:'noposter'},f.title);
+  const link=f.trailer||('https://www.youtube.com/results?search_query='+encodeURIComponent(f.title+' '+f.year+' trailer'));
+  const both=S.round.picks.every(p=>p.length)&&fitScore(m,S.round.picks)===2;
+  return h('article',{class:'card'+(back?' back':'')},
+    h('div',{class:'poster'},poster,h('span',{class:'stamp yes'},'YES'),h('span',{class:'stamp no'},'NOPE'),
+      both?h('span',{class:'fitbadge'},'Fits both your picks'):null),
+    h('div',{class:'info'},
+      h('h2',{class:'ctitle'},f.title),
+      h('p',{class:'meta'},metaLine(f)),
+      f.directors.length?h('p',{class:'credit'},h('span',{},'Directed by '),f.directors.join(' & ')):null,
+      f.cast.length?h('p',{class:'credit'},h('span',{},'Starring '),f.cast.join(', ')):null,
+      f.genres.length?h('p',{class:'genres'},f.genres.join(' · ')):null,
+      h('p',{class:'over clamp'},f.overview||'No description available.'),
+      h('a',{class:'trailer',href:link,target:'_blank',rel:'noopener'},f.trailer?'Watch trailer':'Search trailer on YouTube')));
+}
+function viewSwipe(){
+  if(!S.queue.length) return nextPlayer();
+  S.busy=false;
+  const m=S.queue[0],nxt=S.queue[1];
+  const stage=h('div',{class:'stage'});
+  if(nxt) stage.append(cardEl(nxt,true));
+  const card=cardEl(m,false);stage.append(card);
+  const n=S.round.deck.length,at=n-S.queue.length+1;
+  render(h('main',{class:'screen swipe'},
+    h('div',{class:'topbar'},
+      h('div',{class:'who'},h('b',{},S.players[S.p]),h('span',{},at+' of '+n)),
+      h('div',{style:'display:flex;gap:4px'},
+        h('button',{class:'btn ghost small',type:'button',disabled:!S.history.length,onclick:undo},'Undo'),
+        h('button',{class:'btn ghost small',type:'button',onclick:viewSetup},'Menu'))),
+    stage,
+    h('div',{class:'votes'},voteBtn('no','No'),voteBtn('seen','Seen it'),voteBtn('yes','Yes'))),'swipe');
+  attachDrag(card);
+}
+function attachDrag(card){
+  let sx=0,dx=0,drag=false;
+  const yes=$('.stamp.yes',card),no=$('.stamp.no',card),over=$('.over',card);
+  const reset=()=>{card.style.transform='';yes.style.opacity=0;no.style.opacity=0};
+  card.addEventListener('pointerdown',e=>{
+    if(S.busy||e.target.closest('a,button')) return;
+    drag=true;sx=e.clientX;dx=0;card.setPointerCapture(e.pointerId);card.style.transition='none';
+  });
+  card.addEventListener('pointermove',e=>{
+    if(!drag) return;
+    dx=e.clientX-sx;
+    card.style.transform='translateX('+dx+'px) rotate('+(dx/18)+'deg)';
+    yes.style.opacity=Math.min(Math.max(dx/110,0),1);
+    no.style.opacity=Math.min(Math.max(-dx/110,0),1);
+  });
+  const end=()=>{
+    if(!drag) return;drag=false;card.style.transition='';
+    if(dx>110) act('yes');
+    else if(dx<-110) act('no');
+    else{reset();if(Math.abs(dx)<6) over.classList.toggle('clamp')}
+  };
+  card.addEventListener('pointerup',end);
+  card.addEventListener('pointercancel',()=>{drag=false;card.style.transition='';reset()});
+}
+function act(kind){
+  if(S.busy||S.screen!=='swipe') return;
+  const card=$('.card:not(.back)');if(!card) return;
+  S.busy=true;
+  card.style.transition='transform .28s ease,opacity .28s ease';
+  card.style.opacity='0';
+  card.style.transform=kind==='seen'?'translateY(-110%) scale(.92)':'translateX('+(kind==='yes'?'130%':'-130%')+') rotate('+(kind==='yes'?14:-14)+'deg)';
+  const m=S.queue[0];
+  setTimeout(()=>{
+    (S.round.votes[m.id]=S.round.votes[m.id]||{})[S.players[S.p]]=kind;
+    saveRound();
+    S.history.push(m.id);S.queue.shift();viewSwipe();
+  },240);
+}
+function undo(){
+  if(S.busy||!S.history.length) return;
+  const id=S.history.pop();
+  delete S.round.votes[id][S.players[S.p]];saveRound();
+  S.queue.unshift(byId(id));viewSwipe();
+}
+document.addEventListener('keydown',e=>{
+  if(S.screen!=='swipe'||e.target.matches('input,textarea')) return;
+  if(e.key==='ArrowRight') act('yes');
+  else if(e.key==='ArrowLeft') act('no');
+  else if(e.key==='ArrowUp'||e.key==='ArrowDown') act('seen');
+  else if(e.key==='Backspace') undo();
+});
+
+/* ---------- results ---------- */
+function rowEl(m,v){
+  const f=full(m);
+  return h('div',{class:'row'},
+    f.poster?h('img',{src:IMG+'w185'+f.poster,alt:'',loading:'lazy'}):h('div',{class:'ph'}),
+    h('div',{style:'min-width:0'},
+      h('h3',{},f.title),
+      h('p',{class:'meta'},metaLine(f)),
+      f.directors.length?h('p',{class:'credit'},'Directed by '+f.directors.join(' & ')):null,
+      h('div',{class:'chips'},S.players.map(p=>{
+        const k=v[p];
+        return h('span',{class:'chip '+(k||'')},p+' · '+(k==='yes'?'yes':k==='no'?'no':k==='seen'?'seen it':'skipped'));
+      })),
+      f.trailer?h('a',{class:'trailer',href:f.trailer,target:'_blank',rel:'noopener',style:'display:inline-block;margin-top:6px'},'Watch trailer'):null));
+}
+function viewResults(){
+  const ps=S.players,r=S.round;
+  const rows=r.deck.map(id=>{const m=byId(id);const v=r.votes[id]||{};return m&&{m,v,yes:ps.filter(p=>v[p]==='yes').length,seen:ps.some(p=>v[p]==='seen')}}).filter(Boolean);
+  const matches=rows.filter(x=>x.yes===2);
+  // One yes: put "the other has seen it" above "the other said no", since a rewatch is easier to agree on.
+  const close=rows.filter(x=>x.yes===1).sort((a,b)=>b.seen-a.seen);
+  render(h('main',{class:'screen'},
+    brand(),
+    h('section',{class:'section'},
+      h('div',{class:'hh'},h('h2',{},matches.length===1?'It’s a match':'Matches'),h('span',{class:'muted'},String(matches.length))),
+      matches.length?h('div',{class:'list'},matches.map(x=>rowEl(x.m,x.v)))
+        :h('p',{class:'empty'},'No film got a yes from both of you this round. Try the close calls, or start a new round.')),
+    h('section',{class:'section'},
+      h('div',{class:'hh'},h('h2',{},'Close calls'),h('span',{class:'muted'},String(close.length))),
+      close.length?h('div',{class:'list'},close.map(x=>rowEl(x.m,x.v))):h('p',{class:'empty'},'Nothing got a single yes.')),
+    h('div',{class:'actions'},
+      h('button',{class:'btn primary',type:'button',onclick:()=>{S.round={picks:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();viewPick(0)}},'New round'),
+      h('button',{class:'btn',type:'button',onclick:makeDeck},'Same genres, new films'),
+      h('button',{class:'btn ghost',type:'button',onclick:()=>{S.msg='';viewSetup()}},'Back to setup'))),'results');
+}
+
+/* ---------- boot ---------- */
+rebuildMovies();
+if(S.round&&S.round.stage==='done'&&S.round.deck.every(byId)) viewResults();
+else viewSetup();
+</script>
+</body>
+</html>
