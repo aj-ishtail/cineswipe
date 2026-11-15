@@ -200,6 +200,7 @@ function plural(n,w){return n+' '+w+(n===1?'':'s')}
 function stars(r){return '\u2605'.repeat(Math.floor(r))+(r%1?'\u00bd':'')}
 // One line on why a film is in front of you: a wildcard's source, or a link to a highly rated film.
 function whyLine(f){
+  if(f.via==='dir'&&f.because&&f.because.length) return 'More from '+f.p+', director of '+f.because[0].t+' ('+stars(f.because[0].r)+')';
   if(f.because&&f.because.length) return 'Similar to '+f.because.map(b=>b.t+' ('+stars(b.r)+')').join(' and ');
   const h=f.hint;if(!h) return '';
   if(h.k==='dir') return 'From the director of '+h.t+' (rated '+stars(h.r)+')';
@@ -375,7 +376,7 @@ function viewSetup(){
   }));
   const pending=pendingItems().length;
   const matched=S.shared&&S.shared.matched;
-  const stats=matched?plural(S.movies.length,'film')+' ready to swipe'+(S.wild.length?', plus '+plural(S.wild.length,'wildcard')+' similar to highly rated films.':'.')
+  const stats=matched?plural(S.movies.length,'film')+' ready to swipe'+(S.wild.length?', plus '+plural(S.wild.length,'wildcard')+' based on highly rated films.':'.')
     :S.list.length?plural(S.list.length,'film')+' in your list · '+S.movies.length+' matched'+(pending?' · '+pending+' still to look up':'')
     :'No watchlist loaded yet.';
   const token=h('input',{id:'token',type:'password',placeholder:'Paste your TMDB API Read Access Token',autocomplete:'off','aria-label':'TMDB API key',

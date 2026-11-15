@@ -14,9 +14,13 @@ if (!TOKEN) { console.error('TMDB_TOKEN secret is missing. Add it in Settings > 
 
 const SEED_MIN_RATING = 3.5;  // films rated this or higher are used to find similar films
 const MAX_SEEDS = 600;
-const WILD_POOL = 80;        // how many wildcards to keep ready for the app
-const MIN_VOTES = 50;        // skip very obscure TMDB entries with too little data
-const SEED_CACHE = 'scripts/seed-cache.json';
+const WILD_POOL = 80;         // how many wildcards to keep ready for the app
+const DIR_POOL = 50;          // up to this many of them are director picks
+const DIRECTOR_MIN_SCORE = 1; // a director counts as liked with one 4-star film, or two at 3.5
+const DIR_MIN_VOTES = 150, DIR_MIN_AVG = 6.8;   // quality bar for director picks (TMDB votes and average out of 10)
+const REC_MIN_VOTES = 300, REC_MIN_AVG = 7.0;   // stricter bar for TMDB's own "recommendations", which are noisier
+const MIN_RUNTIME = 60;       // no short films
+const SEED_CACHE = 'scripts/seed-cache.json', CACHE_VERSION = 2;
 
 const GENRES = {28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Sci-Fi',10770:'TV Movie',53:'Thriller',10752:'War',37:'Western'};
 const COUNTRY_SHORT = {'United States of America':'USA','United Kingdom':'UK','South Korea':'S. Korea','Korea':'S. Korea','Russian Federation':'Russia','Hong Kong SAR China':'Hong Kong','Czech Republic':'Czechia'};
@@ -107,12 +111,16 @@ async function lookupSeed(item) {
   const hit = await findHit(item);
   if (!hit) return null;
   const d = await tmdb('/movie/' + hit.id, {language: 'en-US', append_to_response: 'credits,recommendations'});
+  const dirs = [...new Map(((d.credits && d.credits.crew) || []).filter(c => c.job === 'Director').map(c => [c.id, {id: c.id, name: c.name}])).values()].slice(0, 2);
   return {
-    id: d.id, title: d.title || item.name, directors: directorsOf(d).slice(0, 2), cast: castOf(d, 5),
-    recs: ((d.recommendations && d.recommendations.results) || []).filter(r => !r.adult).map(r => ({
-      id: r.id, title: r.title || '', ot: r.original_title || '', year: parseInt((r.release_date || '').slice(0, 4), 10) || 0, votes: r.vote_count || 0
-    }))
+    id: d.id, title: d.title || item.name, directors: dirs.map(x => x.name), dirs, cast: castOf(d, 5),
+    recs: ((d.recommendations && d.recommendations.results) || []).filter(r => !r.adult).map(candidate)
   };
+}
+// A possible wildcard, as TMDB lists it in recommendations or in a director's filmography.
+function candidate(r) {
+  return {id: r.id, title: r.title || '', ot: r.original_title || '', year: parseInt((r.release_date || '').slice(0, 4), 10) || 0,
+    votes: r.vote_count || 0, avg: r.vote_average || 0, g: r.genre_ids || []};
 }
 // Runs fn over items, 5 at a time. Returns the items whose lookup failed; stops everything if the key is rejected.
 async function runPool(items, fn) {
@@ -148,12 +156,13 @@ async function matchWatchlist(list, old) {
 async function loadSeeds(ratings) {
   const top = ratings.filter(r => r.rating >= SEED_MIN_RATING)
     .sort((a, b) => b.rating - a.rating || (a.date < b.date ? 1 : -1)).slice(0, MAX_SEEDS);
-  const cache = existsSync(SEED_CACHE) ? JSON.parse(readFileSync(SEED_CACHE, 'utf8')) : {};
+  let cache = {};
+  if (existsSync(SEED_CACHE)) { const c = JSON.parse(readFileSync(SEED_CACHE, 'utf8')); if (c.v === CACHE_VERSION) cache = c.seeds; }
   const todo = top.filter(r => !(keyOf(r) in cache));
   console.log(`Ratings: ${ratings.length} rated, ${top.length} rated ${SEED_MIN_RATING}+ stars, ${todo.length} to look up`);
   const failed = await runPool(todo, async item => { cache[keyOf(item)] = await lookupSeed(item); });
   if (failed.length) console.log(`Ratings: ${failed.length} lookups failed (retried next run)`);
-  writeFileSync(SEED_CACHE, JSON.stringify(cache));
+  writeFileSync(SEED_CACHE, JSON.stringify({v: CACHE_VERSION, seeds: cache}));
   return top.map(r => ({rating: r.rating, name: r.name, seed: cache[keyOf(r)]})).filter(s => s.seed);
 }
 
@@ -180,32 +189,59 @@ async function buildWildcards(seeds, films, lists, old) {
   const seen = new Set(), seenIds = new Set([...films.map(f => f.id), ...seeds.map(s => s.seed.id)]);
   for (const item of lists.flat()) seen.add(norm(item.name) + '|' + item.year);
   const isSeen = r => seenIds.has(r.id) || [r.title, r.ot].some(t => t && [r.year - 1, r.year, r.year + 1].some(y => seen.has(norm(t) + '|' + y)));
+  const taken = new Set();
 
-  // Score every recommended film: better-rated seeds count more, and so do films recommended by several seeds.
+  // Source 1: unseen, well-regarded films by directors who were rated highly.
+  const directors = new Map();
+  for (const s of seeds) for (const d of s.seed.dirs || []) {   // seeds are sorted best-rated first, so "best" is the first one seen
+    const e = directors.get(d.id) || {id: d.id, name: d.name, score: 0, best: s};
+    e.score += s.rating - 3;           // 3.5 stars -> 0.5, 4 -> 1, 4.5 -> 1.5, 5 -> 2
+    directors.set(d.id, e);
+  }
+  const liked = [...directors.values()].filter(d => d.score >= DIRECTOR_MIN_SCORE).sort((a, b) => b.score - a.score);
+  const dirFailed = await runPool(liked, async d => {
+    const credits = await tmdb('/person/' + d.id + '/movie_credits', {language: 'en-US'});
+    d.picks = (credits.crew || []).filter(c => c.job === 'Director' && !c.adult && !c.video).map(candidate)
+      .filter(r => r.year && r.votes >= DIR_MIN_VOTES && r.avg >= DIR_MIN_AVG && !r.g.includes(10770) && !isSeen(r))
+      .sort((a, b) => b.avg - a.avg).slice(0, 3);
+  });
+  const pool = [];
+  for (let round = 0; round < 3; round++) for (const d of liked) {   // every liked director gets one pick before anyone gets a second
+    const r = (d.picks || [])[round];
+    if (r && !taken.has(r.id) && pool.length < DIR_POOL) { taken.add(r.id); pool.push({rec: r, via: 'dir', p: d.name, from: [{t: d.best.seed.title, r: d.best.rating}]}); }
+  }
+  const nDir = pool.length;
+
+  // Source 2: TMDB's recommendations next to each highly rated film, behind a quality bar.
+  // A film that shows up next to lots of unrelated favourites is generic filler, so many sources count for less each.
   const scores = new Map();
   for (const s of seeds) {
-    const weight = s.rating - 3;       // 3.5 stars -> 0.5, 4 -> 1, 4.5 -> 1.5, 5 -> 2
+    const weight = s.rating - 3;
     s.seed.recs.forEach((r, idx) => {
-      if (!r.year || r.votes < MIN_VOTES || isSeen(r)) return;
-      const e = scores.get(r.id) || {rec: r, score: 0, from: []};
-      e.score += weight * (1 - idx / 40);
+      if (!r.year || r.votes < REC_MIN_VOTES || r.avg < REC_MIN_AVG || taken.has(r.id) || isSeen(r)) return;
+      const e = scores.get(r.id) || {rec: r, sum: 0, from: []};
+      e.sum += weight * (1 - idx / 25);
       e.from.push({t: s.seed.title, r: s.rating});
       scores.set(r.id, e);
     });
   }
-  const top = [...scores.values()].sort((a, b) => b.score - a.score).slice(0, WILD_POOL);
+  const recs = [...scores.values()].map(e => ({...e, score: e.sum / e.from.length ** 0.75 * (e.rec.avg - 6)}))
+    .sort((a, b) => b.score - a.score).slice(0, WILD_POOL - nDir);
+  for (const e of recs) pool.push({rec: e.rec, via: 'rec', from: e.from.sort((a, b) => b.r - a.r).slice(0, 2)});
+
   const known = new Map((old.wild || []).map(f => [f.id, f]));
-  const todo = top.filter(e => !known.has(e.rec.id));
-  console.log(`Wildcards: ${scores.size} candidates, keeping the best ${top.length}, ${todo.length} to look up`);
+  const todo = pool.filter(e => !known.has(e.rec.id));
+  console.log(`Wildcards: ${liked.length} liked directors gave ${nDir} picks, ${scores.size} recommendation candidates gave ${recs.length}; ${todo.length} to look up`);
   const failed = await runPool(todo, async e => {
     known.set(e.rec.id, filmFrom(await tmdb('/movie/' + e.rec.id, DETAIL), 'wild|' + e.rec.id, {name: e.rec.title, year: e.rec.year}));
   });
-  if (failed.length) console.log(`Wildcards: ${failed.length} lookups failed (retried next run)`);
+  if (failed.length + dirFailed.length) console.log(`Wildcards: ${failed.length + dirFailed.length} lookups failed (retried next run)`);
   const wild = [];
-  for (const e of top) {
+  for (const e of pool) {
     const f = known.get(e.rec.id);
-    if (!f || !f.poster) continue;
-    wild.push({...f, because: e.from.sort((a, b) => b.r - a.r).slice(0, 2)});
+    if (!f || !f.poster || (f.runtime && f.runtime < MIN_RUNTIME)) continue;
+    const {because, via, p, ...film} = f;   // drop labels left over from an earlier run
+    wild.push({...film, via: e.via, ...(e.p ? {p: e.p} : {}), because: e.from});
   }
   return wild;
 }
