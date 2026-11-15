@@ -2,7 +2,7 @@
 // with the TMDB key from the TMDB_TOKEN secret.
 //
 //   watchlist.csv  -> films      every watchlist film, with poster, director, cast and so on
-//   ratings.csv    -> wild       "wildcards": films similar to the ones rated 4 stars or higher
+//   ratings.csv    -> wild       "wildcards": films similar to the ones rated 3.5 stars or higher
 //                  -> hints      a line on watchlist cards, e.g. "From the director of ..."
 //   watched.csv    -> keeps films that were already watched out of the wildcards
 //
@@ -12,8 +12,8 @@ import {readFileSync, writeFileSync, existsSync} from 'node:fs';
 const TOKEN = (process.env.TMDB_TOKEN || '').trim();
 if (!TOKEN) { console.error('TMDB_TOKEN secret is missing. Add it in Settings > Secrets and variables > Actions.'); process.exit(1); }
 
-const SEED_MIN_RATING = 4;   // films rated this or higher are used to find similar films
-const MAX_SEEDS = 400;
+const SEED_MIN_RATING = 3.5;  // films rated this or higher are used to find similar films
+const MAX_SEEDS = 600;
 const WILD_POOL = 80;        // how many wildcards to keep ready for the app
 const MIN_VOTES = 50;        // skip very obscure TMDB entries with too little data
 const SEED_CACHE = 'scripts/seed-cache.json';
@@ -184,7 +184,7 @@ async function buildWildcards(seeds, films, lists, old) {
   // Score every recommended film: better-rated seeds count more, and so do films recommended by several seeds.
   const scores = new Map();
   for (const s of seeds) {
-    const weight = s.rating - 3;       // 4 stars -> 1, 4.5 -> 1.5, 5 -> 2
+    const weight = s.rating - 3;       // 3.5 stars -> 0.5, 4 -> 1, 4.5 -> 1.5, 5 -> 2
     s.seed.recs.forEach((r, idx) => {
       if (!r.year || r.votes < MIN_VOTES || isSeen(r)) return;
       const e = scores.get(r.id) || {rec: r, score: 0, from: []};

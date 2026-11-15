@@ -203,7 +203,7 @@ function whyLine(f){
   if(f.because&&f.because.length) return 'Similar to '+f.because.map(b=>b.t+' ('+stars(b.r)+')').join(' and ');
   const h=f.hint;if(!h) return '';
   if(h.k==='dir') return 'From the director of '+h.t+' (rated '+stars(h.r)+')';
-  if(h.n>1) return 'With '+h.p+', who is in '+h.n+' films rated 4\u2605 or higher';
+  if(h.n>1) return 'With '+h.p+', who is in '+h.n+' films rated 3\u00bd\u2605 or higher';
   return 'With '+h.p+', from '+h.t+' (rated '+stars(h.r)+')';
 }
 function shortCountry(n){return COUNTRY_SHORT[n]||n}
