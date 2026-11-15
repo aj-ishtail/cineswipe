@@ -108,6 +108,8 @@ details ul{margin:8px 0 0;padding-left:20px}
 .meta{font-size:14px;color:var(--paper);font-variant-numeric:tabular-nums}
 .credit{font-size:14px;color:#d9d2c6}
 .credit span{color:var(--muted)}
+.why{font-size:13px;font-weight:500;color:var(--bulb)}
+.wildbadge{position:absolute;left:12px;bottom:12px;font-size:12px;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--bulb);color:var(--on-bulb)}
 .genres{font-size:13px;color:var(--muted)}
 .over{font-size:14px;color:#d9d2c6}
 .over.clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
@@ -195,6 +197,15 @@ function genreCounts(movies){
 }
 function fmtRuntime(r){return r>=60?Math.floor(r/60)+'h '+(r%60)+'m':r+'m'}
 function plural(n,w){return n+' '+w+(n===1?'':'s')}
+function stars(r){return '\u2605'.repeat(Math.floor(r))+(r%1?'\u00bd':'')}
+// One line on why a film is in front of you: a wildcard's source, or a link to a highly rated film.
+function whyLine(f){
+  if(f.because&&f.because.length) return 'Similar to '+f.because.map(b=>b.t+' ('+stars(b.r)+')').join(' and ');
+  const h=f.hint;if(!h) return '';
+  if(h.k==='dir') return 'From the director of '+h.t+' (rated '+stars(h.r)+')';
+  if(h.n>1) return 'With '+h.p+', who is in '+h.n+' films rated 4\u2605 or higher';
+  return 'With '+h.p+', from '+h.t+' (rated '+stars(h.r)+')';
+}
 function shortCountry(n){return COUNTRY_SHORT[n]||n}
 /*END PURE*/
 
@@ -231,7 +242,7 @@ const S={
   cache:store.get('cache2',{}),    // "name|year" -> {id,title,year,poster,overview,g:[genre ids]}, or null when TMDB has no match
   details:store.get('details',{}), // tmdbId -> {runtime, genres, directors, cast, countries, trailer}
   round:store.get('round',null),   // {picks:[[ids],[ids]], deck:[ids], fitAll, votes:{id:{name:kind}}, stage}
-  movies:[],unmatched:[],
+  movies:[],unmatched:[],wild:[],  // wild = films similar to highly rated ones, not on the watchlist
   screen:'setup',p:0,queue:[],history:[],busy:false,
   msg:'',bad:false,notice:''
 };
@@ -239,7 +250,7 @@ while(S.players.length<2) S.players.push('');
 if(!SIZES.includes(S.size)) S.size=12;
 
 const saveRound=()=>store.set('round',S.round);
-const byId=id=>S.movies.find(m=>m.id===id);
+const byId=id=>S.movies.find(m=>m.id===id)||S.wild.find(m=>m.id===id);
 function render(node,screen){S.screen=screen;$('#app').replaceChildren(node);window.scrollTo(0,0)}
 const brand=(sub)=>h('header',{class:'brand'},h('h1',{},'Cineswipe'),h('div',{class:'marquee'}),sub?h('p',{class:'sub'},sub):null);
 
@@ -364,7 +375,7 @@ function viewSetup(){
   }));
   const pending=pendingItems().length;
   const matched=S.shared&&S.shared.matched;
-  const stats=matched?plural(S.movies.length,'film')+' ready to swipe.'
+  const stats=matched?plural(S.movies.length,'film')+' ready to swipe'+(S.wild.length?', plus '+plural(S.wild.length,'wildcard')+' similar to highly rated films.':'.')
     :S.list.length?plural(S.list.length,'film')+' in your list · '+S.movies.length+' matched'+(pending?' · '+pending+' still to look up':'')
     :'No watchlist loaded yet.';
   const token=h('input',{id:'token',type:'password',placeholder:'Paste your TMDB API Read Access Token',autocomplete:'off','aria-label':'TMDB API key',
@@ -458,7 +469,11 @@ function viewPick(i){
     h('div',{class:'actions'},done,h('button',{class:'btn ghost',type:'button',onclick:viewSetup},'Back to setup'))),'pick');
 }
 async function makeDeck(){
-  const {deck,fitAll}=buildDeck(S.movies,S.round.picks,S.size);
+  // About a quarter of each deck is wildcards, when there are any. Both parts follow the genre picks.
+  const nWild=S.wild.length?Math.round(S.size/4):0;
+  const wildPart=buildDeck(S.wild,S.round.picks,nWild).deck;
+  const deck=shuffle(buildDeck(S.movies,S.round.picks,S.size-wildPart.length).deck.concat(wildPart));
+  const fitAll=deck.filter(m=>fitScore(m,S.round.picks)===S.round.picks.length).length;
   S.round.deck=deck.map(m=>m.id);S.round.fitAll=fitAll;S.round.votes={};S.round.stage='swipe0';saveRound();
   const missing=S.round.deck.filter(id=>!S.details[id]);
   if(missing.length&&S.token){
@@ -529,10 +544,12 @@ function cardEl(m,back){
   const both=S.round.picks.every(p=>p.length)&&fitScore(m,S.round.picks)===2;
   return h('article',{class:'card'+(back?' back':'')},
     h('div',{class:'poster'},poster,h('span',{class:'stamp yes'},'YES'),h('span',{class:'stamp no'},'NOPE'),
-      both?h('span',{class:'fitbadge'},'Fits both your picks'):null),
+      both?h('span',{class:'fitbadge'},'Fits both your picks'):null,
+      m.because?h('span',{class:'wildbadge'},'Wildcard'):null),
     h('div',{class:'info'},
       h('h2',{class:'ctitle'},f.title),
       h('p',{class:'meta'},metaLine(f)),
+      whyLine(m)?h('p',{class:'why'},whyLine(m)):null,
       f.directors.length?h('p',{class:'credit'},h('span',{},'Directed by '),f.directors.join(' & ')):null,
       f.cast.length?h('p',{class:'credit'},h('span',{},'Starring '),f.cast.join(', ')):null,
       f.genres.length?h('p',{class:'genres'},f.genres.join(' · ')):null,
@@ -618,6 +635,7 @@ function rowEl(m,v){
       h('h3',{},f.title),
       h('p',{class:'meta'},metaLine(f)),
       f.directors.length?h('p',{class:'credit'},'Directed by '+f.directors.join(' & ')):null,
+      m.because?h('p',{class:'why'},'Wildcard, not on the watchlist. '+whyLine(m)):null,
       h('div',{class:'chips'},S.players.map(p=>{
         const k=v[p];
         return h('span',{class:'chip '+(k||'')},p+' · '+(k==='yes'?'yes':k==='no'?'no':k==='seen'?'seen it':'skipped'));
@@ -654,8 +672,8 @@ async function loadShared(){
     if(r.ok){
       const data=await r.json();
       if(data.films&&data.films.length){
-        S.movies=data.films;S.unmatched=data.unmatched||[];
-        for(const f of data.films) S.details[f.id]={runtime:f.runtime,genres:f.genres,directors:f.directors,cast:f.cast,countries:f.countries,trailer:f.trailer};
+        S.movies=data.films;S.unmatched=data.unmatched||[];S.wild=data.wild||[];
+        for(const f of data.films.concat(S.wild)) S.details[f.id]={runtime:f.runtime,genres:f.genres,directors:f.directors,cast:f.cast,countries:f.countries,trailer:f.trailer};
         S.shared={matched:true,updated:shortDate(data.updated)};
         if(S.screen==='setup') viewSetup();
         return;
