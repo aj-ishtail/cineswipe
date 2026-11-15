@@ -97,7 +97,8 @@ function filmFrom(d, key, fallback) {
     directors: directorsOf(d).slice(0, 2),
     cast: castOf(d, 3),
     countries: (d.production_countries || []).map(c => COUNTRY_SHORT[c.name] || c.name).slice(0, 2),
-    trailer: pick ? 'https://www.youtube.com/watch?v=' + pick.key : ''
+    trailer: pick ? 'https://www.youtube.com/watch?v=' + pick.key : '',
+    lang: d.original_language || ''
   };
 }
 const DETAIL = {language: 'en-US', append_to_response: 'videos,credits', include_video_language: 'en,null'};
@@ -137,7 +138,8 @@ async function runPool(items, fn) {
 
 /* ---------- step 1: the watchlist ---------- */
 async function matchWatchlist(list, old) {
-  const known = new Map((old.films || []).map(f => [f.key, f]));
+  // Entries saved before a field was added (lang) are looked up again once.
+  const known = new Map((old.films || []).filter(f => 'lang' in f).map(f => [f.key, f]));
   const todo = list.filter(i => !known.has(keyOf(i)));
   console.log(`Watchlist: ${list.length} films, ${list.length - todo.length} already matched, ${todo.length} to look up`);
   const found = new Map();
@@ -229,7 +231,7 @@ async function buildWildcards(seeds, films, lists, old) {
     .sort((a, b) => b.score - a.score).slice(0, WILD_POOL - nDir);
   for (const e of recs) pool.push({rec: e.rec, via: 'rec', from: e.from.sort((a, b) => b.r - a.r).slice(0, 2)});
 
-  const known = new Map((old.wild || []).map(f => [f.id, f]));
+  const known = new Map((old.wild || []).filter(f => 'lang' in f).map(f => [f.id, f]));
   const todo = pool.filter(e => !known.has(e.rec.id));
   console.log(`Wildcards: ${liked.length} liked directors gave ${nDir} picks, ${scores.size} recommendation candidates gave ${recs.length}; ${todo.length} to look up`);
   const failed = await runPool(todo, async e => {

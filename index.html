@@ -181,15 +181,20 @@ function listFromCSV(text){
 }
 function shuffle(a,rand){rand=rand||Math.random;a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
 // How many players' genre picks a film fits. An empty pick list means "any genre".
-function fitScore(m,picks){return picks.filter(p=>!p.length||p.some(g=>(m.g||[]).includes(g))).length}
+// A player's language pick: null means any. A film with no known language passes.
+const langOK=(m,l)=>!l||!m.lang||m.lang===l;
+// How many players' picks a film fits: their genres (an empty list means any) and their language.
+function fitScore(m,picks,langs){return picks.filter((p,i)=>(!p.length||p.some(g=>(m.g||[]).includes(g)))&&langOK(m,langs&&langs[i])).length}
 // Best fit: films that suit everyone first, then films that suit fewer people, random within each group.
-function buildDeck(movies,picks,n,rand){
+function buildDeck(movies,picks,n,rand,langs){
   const groups={};
-  for(const m of movies){const s=fitScore(m,picks);(groups[s]=groups[s]||[]).push(m)}
+  // Languages are a hard filter: a film must be in a language that at least one player picked.
+  if(langs&&langs.every(Boolean)) movies=movies.filter(m=>langs.some(l=>langOK(m,l)));
+  for(const m of movies){const s=fitScore(m,picks,langs);(groups[s]=groups[s]||[]).push(m)}
   let deck=[];
   for(let s=picks.length;s>=0&&deck.length<n;s--) if(groups[s]) deck=deck.concat(shuffle(groups[s],rand));
   deck=deck.slice(0,n);
-  return {deck,fitAll:deck.filter(m=>fitScore(m,picks)===picks.length).length};
+  return {deck,fitAll:deck.filter(m=>fitScore(m,picks,langs)===picks.length).length};
 }
 function genreCounts(movies){
   const c={};for(const m of movies) for(const g of m.g||[]) if(GENRES[g]) c[g]=(c[g]||0)+1;
@@ -233,6 +238,7 @@ const store={
 store.del('cache');store.del('votes'); // data from the first version
 const IMG='https://image.tmdb.org/t/p/';
 const SIZES=[8,12,20];
+const LANGS=[{code:'en',label:'English only'},{code:'hi',label:'Hindi only'},{code:'bn',label:'Bangla only'},{code:null,label:'Any language'}];
 const SHARED_UPLOAD='https://github.com/aj-ishtail/cineswipe/upload/main';
 
 const S={
@@ -437,7 +443,7 @@ async function onStart(){
     if(res.failed) S.notice='Left out '+plural(res.failed,'film')+' that couldn’t be looked up right now. They’ll be retried next round.';
   }
   if(!S.movies.length){S.msg='None of the films could be matched on TMDB. Check your connection and try again.';S.bad=true;viewSetup();return}
-  S.round={picks:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();
+  S.round={picks:[null,null],langs:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();
   viewPick(0);
 }
 
@@ -446,8 +452,18 @@ function viewPick(i){
   const name=S.players[i];
   const chosen=new Set(S.round.picks[i]||[]);
   const counts=genreCounts(S.movies);
+  S.round.langs=S.round.langs||[null,null];
+  let lang=S.round.langs[i]||null;
+  const pool=S.movies.concat(S.wild);
+  const langChips=h('div',{class:'gchips',role:'radiogroup','aria-label':'Language'},LANGS.map(o=>{
+    const n=o.code?pool.filter(m=>m.lang===o.code).length:pool.length;
+    return h('button',{class:'gchip',type:'button',role:'radio','aria-checked':String(lang===o.code),'aria-pressed':String(lang===o.code),onclick:e=>{
+      lang=o.code;
+      for(const b of langChips.children){const on=b===e.currentTarget;b.setAttribute('aria-pressed',String(on));b.setAttribute('aria-checked',String(on))}
+    }},o.label,h('small',{},String(n)));
+  }));
   const done=h('button',{class:'btn primary',type:'button',onclick:()=>{
-    S.round.picks[i]=[...chosen];
+    S.round.picks[i]=[...chosen];S.round.langs[i]=lang;
     if(i===0){S.round.stage='pick1';saveRound();viewPick(1)}
     else makeDeck();
   }});
@@ -465,16 +481,24 @@ function viewPick(i){
       h('p',{class:'label'},i===0?'Round starts · pass the phone to':'Now pass the phone to'),
       h('h2',{class:'bigname'},name)),
     i===0&&S.notice?h('p',{class:'status',role:'status'},S.notice):null,
-    h('p',{class:'sub'},'What are you in the mood for? Pick as many as you like, or none if anything goes. The number is how many films on your watchlist have that genre.'),
-    chips,
+    h('section',{class:'section'},h('p',{class:'label'},'Language'),langChips),
+    h('section',{class:'section'},h('p',{class:'label'},'Genres'),
+      h('p',{class:'sub'},'Pick as many as you like, or none if anything goes. The number is how many films on your watchlist have that genre.'),
+      chips),
     h('div',{class:'actions'},done,h('button',{class:'btn ghost',type:'button',onclick:viewSetup},'Back to setup'))),'pick');
 }
 async function makeDeck(){
   // About a quarter of each deck is wildcards, when there are any. Both parts follow the genre picks.
   const nWild=S.wild.length?Math.round(S.size/4):0;
-  const wildPart=buildDeck(S.wild,S.round.picks,nWild).deck;
-  const deck=shuffle(buildDeck(S.movies,S.round.picks,S.size-wildPart.length).deck.concat(wildPart));
-  const fitAll=deck.filter(m=>fitScore(m,S.round.picks)===S.round.picks.length).length;
+  const L=S.round.langs||[null,null];
+  const wildPart=buildDeck(S.wild,S.round.picks,nWild,undefined,L).deck;
+  const deck=shuffle(buildDeck(S.movies,S.round.picks,S.size-wildPart.length,undefined,L).deck.concat(wildPart));
+  if(!deck.length){
+    S.notice='No films on the list are in the languages you both picked. Choose again.';
+    S.round.stage='pick0';saveRound();viewPick(0);return;
+  }
+  S.notice='';
+  const fitAll=deck.filter(m=>fitScore(m,S.round.picks,L)===S.round.picks.length).length;
   S.round.deck=deck.map(m=>m.id);S.round.fitAll=fitAll;S.round.votes={};S.round.stage='swipe0';saveRound();
   const missing=S.round.deck.filter(id=>!S.details[id]);
   if(missing.length&&S.token){
@@ -504,7 +528,8 @@ function nextPlayer(){
 }
 function viewHandoff(){
   const n=S.players[S.p],r=S.round;
-  const fit=r.picks.every(p=>!p.length)?'Any genre, picked at random.'
+  const L=r.langs||[null,null];
+  const fit=!r.deck.length?'':r.picks.every(p=>!p.length)&&L.every(l=>!l)?'Any genre, any language, picked at random.'
     :r.fitAll===r.deck.length?'All of them fit both your picks.'
     :r.fitAll?r.fitAll+' fit both your picks. The rest fit one of you.'
     :'No film fits both your picks, so this deck mixes each of yours.';
@@ -542,7 +567,8 @@ function cardEl(m,back){
     ?h('img',{src:IMG+'w500'+f.poster,alt:back?'':'Poster for '+f.title,draggable:'false'})
     :h('div',{class:'noposter'},f.title);
   const link=f.trailer||('https://www.youtube.com/results?search_query='+encodeURIComponent(f.title+' '+f.year+' trailer'));
-  const both=S.round.picks.every(p=>p.length)&&fitScore(m,S.round.picks)===2;
+  const L=S.round.langs||[null,null];
+  const both=S.round.picks.every((p,i)=>p.length||L[i])&&fitScore(m,S.round.picks,L)===2;
   return h('article',{class:'card'+(back?' back':'')},
     h('div',{class:'poster'},poster,h('span',{class:'stamp yes'},'YES'),h('span',{class:'stamp no'},'NOPE'),
       both?h('span',{class:'fitbadge'},'Fits both your picks'):null,
@@ -659,7 +685,7 @@ function viewResults(){
       h('div',{class:'hh'},h('h2',{},'Close calls'),h('span',{class:'muted'},String(close.length))),
       close.length?h('div',{class:'list'},close.map(x=>rowEl(x.m,x.v))):h('p',{class:'empty'},'Nothing got a single yes.')),
     h('div',{class:'actions'},
-      h('button',{class:'btn primary',type:'button',onclick:()=>{S.round={picks:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();viewPick(0)}},'New round'),
+      h('button',{class:'btn primary',type:'button',onclick:()=>{S.round={picks:[null,null],langs:[null,null],deck:[],fitAll:0,votes:{},stage:'pick0'};saveRound();viewPick(0)}},'New round'),
       h('button',{class:'btn',type:'button',onclick:makeDeck},'Same genres, new films'),
       h('button',{class:'btn ghost',type:'button',onclick:()=>{S.msg='';viewSetup()}},'Back to setup'))),'results');
 }
