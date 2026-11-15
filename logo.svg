@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>Cineswipe</title>
+  <defs>
+    <mask id="ticket">
+      <rect x="-118" y="-160" width="236" height="320" rx="28" fill="#fff"/>
+      <circle cx="-118" cy="42" r="26" fill="#000"/>
+      <circle cx="118" cy="42" r="26" fill="#000"/>
+    </mask>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="#120f17"/>
+  <g transform="translate(214 268) rotate(-14)">
+    <rect x="-118" y="-160" width="236" height="320" rx="28" fill="#2b2536" stroke="#4a4058" stroke-width="9"/>
+  </g>
+  <g transform="translate(292 246) rotate(11)">
+    <g mask="url(#ticket)">
+      <rect x="-118" y="-160" width="236" height="320" fill="#f4b942"/>
+      <line x1="-86" y1="42" x2="86" y2="42" stroke="#1c1405" stroke-width="8" stroke-dasharray="15 13" stroke-linecap="round" opacity=".4"/>
+      <path d="M-34 -98 L56 -46 L-34 6 Z" fill="#1c1405" stroke="#1c1405" stroke-width="18" stroke-linejoin="round"/>
+      <g fill="#1c1405" opacity=".5">
+        <circle cx="-63" cy="104" r="14"/><circle cx="-21" cy="104" r="14"/><circle cx="21" cy="104" r="14"/><circle cx="63" cy="104" r="14"/>
+      </g>
+    </g>
+  </g>
+</svg>
