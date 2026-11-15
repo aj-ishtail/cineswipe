@@ -399,7 +399,7 @@ function viewSetup(){
       h('p',{class:'help'},stats),
       S.unmatched.length?h('details',{},h('summary',{},plural(S.unmatched.length,'film')+" couldn't be matched"),
         h('ul',{},S.unmatched.map(i=>h('li',{},i.name+(i.year?' ('+i.year+')':''))))):null,
-      h('details',{},h('summary',{},S.shared?'How to update the shared list':'Share one list across all your devices'),
+      S.shared!==false?null:h('details',{},h('summary',{},'Share one list across all your devices'),
         h('ol',{style:'margin:8px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:6px'},
           h('li',{},'On the Letterboxd website: Settings → Import & Export → Export your data. Unzip it.'),
           h('li',{},h('a',{href:SHARED_UPLOAD,target:'_blank',rel:'noopener'},'Open the upload page on GitHub'),' and drop in watchlist.csv. Keep that exact file name.'),
