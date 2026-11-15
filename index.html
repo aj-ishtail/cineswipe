@@ -269,7 +269,7 @@ if(!SIZES.includes(S.size)) S.size=12;
 const saveRound=()=>store.set('round',S.round);
 const byId=id=>S.movies.find(m=>m.id===id)||S.wild.find(m=>m.id===id);
 function render(node,screen){S.screen=screen;$('#app').replaceChildren(node);window.scrollTo(0,0)}
-const brand=(sub)=>h('header',{class:'brand'},h('h1',{},h('img',{src:'logo.svg',alt:''}),'Cineswipe'),h('div',{class:'marquee'}),sub?h('p',{class:'sub'},sub):null);
+const brand=(sub)=>h('header',{class:'brand'},h('h1',{},h('img',{src:'logo.svg',alt:''}),'CineSwipe'),h('div',{class:'marquee'}),sub?h('p',{class:'sub'},sub):null);
 
 /* ---------- TMDB ---------- */
 async function tmdb(path,params){
