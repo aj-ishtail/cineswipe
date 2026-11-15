@@ -301,6 +301,7 @@ async function pool(items,n,fn){
   }));
 }
 function rebuildMovies(){
+  if(S.shared&&S.shared.matched) return; // films came ready-made from movies.json
   S.movies=[];S.unmatched=[];const ids=new Set();
   for(const i of S.list){
     const c=S.cache[keyOf(i)];
@@ -308,7 +309,7 @@ function rebuildMovies(){
     else if(c===null) S.unmatched.push(i);
   }
 }
-const pendingItems=()=>S.list.filter(i=>!(keyOf(i) in S.cache));
+const pendingItems=()=>S.shared&&S.shared.matched?[]:S.list.filter(i=>!(keyOf(i) in S.cache));
 
 function progressScreen(title,total,note){
   const fill=h('i'),count=h('p',{class:'count muted'},'0 / '+total);
@@ -362,8 +363,9 @@ function viewSetup(){
     inp.value=n;return inp;
   }));
   const pending=pendingItems().length;
-  const stats=S.list.length
-    ?plural(S.list.length,'film')+' in your list · '+S.movies.length+' matched'+(pending?' · '+pending+' still to look up':'')
+  const matched=S.shared&&S.shared.matched;
+  const stats=matched?plural(S.movies.length,'film')+' ready to swipe.'
+    :S.list.length?plural(S.list.length,'film')+' in your list · '+S.movies.length+' matched'+(pending?' · '+pending+' still to look up':'')
     :'No watchlist loaded yet.';
   const token=h('input',{id:'token',type:'password',placeholder:'Paste your TMDB API Read Access Token',autocomplete:'off','aria-label':'TMDB API key',
     oninput:e=>{S.token=e.target.value.trim();store.set('token',S.token);refresh()}});
@@ -377,7 +379,7 @@ function viewSetup(){
   function refresh(){
     let why='';
     if(!namesOk()) why='Enter two different names.';
-    else if(!S.list.length) why='Upload your watchlist first.';
+    else if(!S.list.length&&!S.movies.length) why=S.shared===null?'Loading the watchlist…':'Upload your watchlist first.';
     else if(pendingItems().length&&!S.token) why='Add your TMDB key so the films can be looked up.';
     start.disabled=!!why;hint.textContent=why;
   }
@@ -402,7 +404,7 @@ function viewSetup(){
           h('li',{},'On the Letterboxd website: Settings → Import & Export → Export your data. Unzip it.'),
           h('li',{},h('a',{href:SHARED_UPLOAD,target:'_blank',rel:'noopener'},'Open the upload page on GitHub'),' and drop in watchlist.csv. Keep that exact file name.'),
           h('li',{},'Press Commit changes. Within a minute or two, every device loads the new list.')))),
-    h('section',{class:'section'},h('p',{class:'label'},'TMDB key'),token,
+    matched||S.shared===null?null:h('section',{class:'section'},h('p',{class:'label'},'TMDB key'),token,
       h('p',{class:'help'},'Free at themoviedb.org → Settings → API. It stays in this browser only.')),
     h('div',{class:'actions'},
       resumable?h('button',{class:'btn primary',type:'button',onclick:resumeRound},'Resume the current round'):null,
@@ -459,7 +461,7 @@ async function makeDeck(){
   const {deck,fitAll}=buildDeck(S.movies,S.round.picks,S.size);
   S.round.deck=deck.map(m=>m.id);S.round.fitAll=fitAll;S.round.votes={};S.round.stage='swipe0';saveRound();
   const missing=S.round.deck.filter(id=>!S.details[id]);
-  if(missing.length){
+  if(missing.length&&S.token){
     // A failed detail lookup only hides director/cast on that card, so carry on either way.
     await runLookups(missing,'Shuffling the deck','',async id=>{S.details[id]=await fetchDetails(id)},()=>store.set('details',S.details));
   }
@@ -644,15 +646,29 @@ function viewResults(){
 }
 
 /* ---------- shared watchlist (watchlist.csv in the GitHub repository) ---------- */
+const shortDate=d=>d&&!isNaN(new Date(d))?new Date(d).toLocaleDateString(undefined,{day:'numeric',month:'short'}):'';
 async function loadShared(){
+  // Best case: GitHub has already matched every film (movies.json), so no TMDB key is needed here.
+  try{
+    const r=await fetch('movies.json',{cache:'no-store'});
+    if(r.ok){
+      const data=await r.json();
+      if(data.films&&data.films.length){
+        S.movies=data.films;S.unmatched=data.unmatched||[];
+        for(const f of data.films) S.details[f.id]={runtime:f.runtime,genres:f.genres,directors:f.directors,cast:f.cast,countries:f.countries,trailer:f.trailer};
+        S.shared={matched:true,updated:shortDate(data.updated)};
+        if(S.screen==='setup') viewSetup();
+        return;
+      }
+    }
+  }catch(e){}
   try{
     const r=await fetch('watchlist.csv',{cache:'no-store'});
     if(!r.ok) throw new Error('none');
     const list=listFromCSV(await r.text());
     if(!list.length) throw new Error('empty');
     S.list=list;store.set('list',list);rebuildMovies();
-    const lm=r.headers.get('Last-Modified');
-    S.shared={updated:lm?new Date(lm).toLocaleDateString(undefined,{day:'numeric',month:'short'}):''};
+    S.shared={matched:false,updated:shortDate(r.headers.get('Last-Modified'))};
   }catch(e){S.shared=false}
   if(S.screen==='setup') viewSetup();
 }
