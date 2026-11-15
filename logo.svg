@@ -6,14 +6,16 @@
 <linearGradient id="scr" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffa64d"/><stop offset="1" stop-color="#ff8000"/></linearGradient>
 </defs>
 <g clip-path="url(#r)">
-<rect width="512" height="512" fill="#14181c"/>
+<rect width="512" height="512" fill="#2c3440"/>
 <rect width="512" height="512" fill="url(#glow)"/>
 <rect x="66" y="84" width="380" height="244" rx="24" fill="url(#scr)"/>
 <path d="M238 160 L294 196 L238 232 Z" fill="#14181c" opacity=".2" stroke="#14181c" stroke-opacity=".2" stroke-width="12" stroke-linejoin="round"/>
 <g fill="#ffc48a" opacity=".38"><circle cx="183" cy="310" r="54"/><circle cx="333" cy="317" r="50"/></g>
 <g fill="#14181c">
-<circle cx="184" cy="314" r="52"/><rect x="92" y="372" width="182" height="210" rx="86"/>
 <circle cx="332" cy="321" r="48"/><rect x="250" y="378" width="166" height="210" rx="80"/>
+</g>
+<g fill="#14181c" stroke="#2c3440" stroke-width="10" paint-order="stroke">
+<circle cx="184" cy="314" r="52"/><rect x="92" y="372" width="182" height="210" rx="86"/>
 </g>
 </g>
 </svg>
