@@ -1,6 +1,6 @@
 {
-  "name": "Cineswipe",
-  "short_name": "Cineswipe",
+  "name": "CineSwipe",
+  "short_name": "CineSwipe",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#14181c",
